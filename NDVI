@@ -1,0 +1,65 @@
+var imagemVisParam: SR_B6, SR_B5 and SR_B4  //parâmetro de visualização criado
+var ce = ee.FeatureCollection('users/AnaFreitas/vicosa'); //área de interesse
+
+//máscara de nuvem
+function maskL8sr(image) {
+  // Bits 3 and 5 are cloud shadow and cloud, respectively.
+  var cloudShadowBitMask = (1 << 3);
+  var cloudsBitMask = (1 << 5);
+  // Get the pixel QA band.
+  var qa = image.select('QA_PIXEL');
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0)
+                 .and(qa.bitwiseAnd(cloudsBitMask).eq(0));
+  return image.updateMask(mask);
+}
+
+//Função de corte
+function clipCollec(img){
+  return ee.Image(img).clip(ce).copyProperties(img, ["system:time_start"]);
+}
+
+//banda Dia Juliano
+function addDateBand(img){
+  var d = ee.Date(img.get('system:time_start'));
+  var day = d.getRelative('day','year');
+  //var d2 = y.add(d.getFraction('year'))
+  return img.addBands(ee.Image.constant(day).float().select([0],['Jday'])).copyProperties(img, ["system:time_start"]);
+} 
+
+//cálculo do NDVI
+function computeNDVI(img){
+  return img.addBands(img.normalizedDifference(['SR_B5','SR_B4']).select([0],['NDVI'])).copyProperties(img, ["system:time_start"]);
+}
+
+var dataset = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+                                 .filterDate('2021-09-08', '2021-11-27')
+                                 .filterBounds(ce)
+                                 .map(computeNDVI)
+                                 .map(clipCollec)
+                                 .map(maskL8sr)
+                                 .map(addDateBand);                             
+print(dataset);
+Map.addLayer(dataset);
+
+//Mosaico temporal nbr a partir da mediana das imagens
+var mosaic= dataset.min();
+print(mosaic, 'Mosaico');
+Map.addLayer(mosaic, imageVisParam, 'mosaic');
+
+//Imagem com NDVI e Jday: garantindo que saberemos a data do pixel utilizado.
+var NDVI = mosaic.select(['NDVI', 'Jday']);
+
+//No caso, seria selecionada apenas o NDVI. Com o Jday não da para visualizar
+//print(NDVI, 'NDVI');
+//var ndviVis = {min: 0, max:1, palette: ['white', 'green']};
+//Map.addLayer(NDVI, ndviVis, 'NDVI');
+
+Export.image.toDrive({
+  image: NDVI,
+  description: 'ndvi2021_min',
+  folder:"teste",
+  scale: 30,
+  region: ce,
+  fileFormat: 'GeoTIFF'
+});
