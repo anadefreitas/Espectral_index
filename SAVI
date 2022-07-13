@@ -1,0 +1,28 @@
+var ce = ee.FeatureCollection('users/AnaFreitas/vicosa');
+
+var dataset = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+                                 .filterDate('2018-10-01', '2018-11-01')
+                                 .median()
+                                 .clip(ce);
+    
+Map.addLayer(dataset)
+print(dataset)
+
+var ndviVis = {min: 0, max:1, palette: ['white', 'green']};
+//dictionary e aplly the formula
+var savi = dataset.expression(
+  '1.5*((NIR-RED)/(NIR+RED+0.5))',{
+    'NIR':dataset.select('SR_B5'),
+    'RED':dataset.select('SR_B4'),
+  }).rename('savi');
+  
+  Map.addLayer(savi, ndviVis, 'savi');
+print(savi)
+
+Export.image.toDrive({
+  image: savi,
+  description: 'savi2',
+  scale: 30,
+  region: ce,
+  fileFormat: 'GeoTIFF'
+});
